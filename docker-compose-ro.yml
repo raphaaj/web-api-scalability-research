@@ -1,0 +1,59 @@
+networks:
+  engs-tcc-network-ro:
+    external: true
+
+volumes:
+  engs-tcc-prometheus-data:
+    external: true
+  engs-tcc-grafana-data:
+    external: true
+
+services:
+  engs-tcc-prometheus:
+    image: prom/prometheus:v3.3.1
+    container_name: engs-tcc-prometheus-ro
+    restart: unless-stopped
+    mem_limit: '1gb'
+    memswap_limit: '1gb'
+    cpus: '1.0'
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+      - '--enable-feature=native-histograms'
+      - '--storage.tsdb.retention.time=2y'
+    volumes:
+      - ./prometheus/prometheus-ro.yml:/etc/prometheus/prometheus.yml:ro
+      - engs-tcc-prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - engs-tcc-network-ro
+    ports:
+      - 8004:9090
+  
+  engs-tcc-grafana:
+    image: grafana/grafana-oss:12.0.0
+    container_name: engs-tcc-grafana-ro
+    restart: unless-stopped
+    mem_limit: '1gb'
+    memswap_limit: '1gb'
+    cpus: '1.0'
+    volumes:
+      - engs-tcc-grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      engs-tcc-prometheus:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network-ro
+    ports:
+      - 8005:3000

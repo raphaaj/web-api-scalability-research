@@ -1,0 +1,1 @@
+# Importador de Histórico de Cotações

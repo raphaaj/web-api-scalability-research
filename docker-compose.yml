@@ -1,0 +1,194 @@
+networks:
+  engs-tcc-network:
+    external: true
+
+volumes:
+  engs-tcc-db-postgresdata:
+    external: true
+  engs-tcc-prometheus-data:
+    external: true
+  engs-tcc-grafana-data:
+    external: true
+
+services:
+
+  engs-tcc-db:
+    image: postgres:17.4
+    container_name: engs-tcc-db
+    restart: unless-stopped
+    shm_size: '1gb'
+    mem_limit: '2gb'
+    memswap_limit: '2gb'
+    cpus: '2.0'
+    env_file:
+      - ./envs/engs-tcc-db.env
+    volumes:
+      - ./database/postgresql.conf:/etc/postgresql/postgresql.conf
+      - engs-tcc-db-postgresdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "b3_quotation_histories_2024"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8000:5432
+  
+  engs-tcc-webapi:
+    build:
+      context: ./applications/B3.QuotationHistories.WebApi/
+      dockerfile: ./B3.QuotationHistories.WebApi/Dockerfile
+    image: engs-tcc-webapi
+    container_name: engs-tcc-webapi
+    restart: unless-stopped
+    mem_limit: '0.25gb'
+    memswap_limit: '0.25gb'
+    cpus: '0.2'
+    env_file:
+      - ./envs/engs-tcc-webapi.env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      engs-tcc-db:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8001:8080
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    container_name: cadvisor
+    restart: unless-stopped
+    mem_limit: '0.25gb'
+    memswap_limit: '0.25gb'
+    cpus: '0.5'
+    command:
+      - '-housekeeping_interval=1s'
+      - '-docker_only=true'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      engs-tcc-db:
+        condition: service_healthy
+      engs-tcc-webapi:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8002:8080
+
+  engs-tcc-db-prometheus-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    container_name: engs-tcc-db-prometheus-exporter
+    restart: unless-stopped
+    mem_limit: '0.1gb'
+    memswap_limit: '0.1gb'
+    cpus: '0.25'
+    env_file:
+      - ./envs/engs-tcc-db-prometheus-exporter.env
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9187"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      engs-tcc-db:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8003:9187
+
+  engs-tcc-prometheus:
+    image: prom/prometheus:v3.3.1
+    container_name: engs-tcc-prometheus
+    restart: unless-stopped
+    mem_limit: '1gb'
+    memswap_limit: '1gb'
+    cpus: '1.0'
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+      - '--enable-feature=native-histograms'
+      - '--storage.tsdb.retention.time=2y'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - engs-tcc-prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      engs-tcc-db-prometheus-exporter:
+        condition: service_healthy
+      cadvisor:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8004:9090
+  
+  engs-tcc-k6:
+    image: grafana/k6:1.0.0
+    container_name: engs-tcc-k6
+    restart: unless-stopped
+    mem_limit: '4gb'
+    memswap_limit: '4gb'
+    cpus: '2.0'
+    entrypoint: [ "tail", "-f", "/dev/null" ]
+    env_file:
+      - ./envs/engs-tcc-k6.env
+    volumes:
+      - ./k6/scripts:/scripts
+      - ./k6/reports:/reports
+      - ./k6/outputs:/outputs
+    depends_on:
+      engs-tcc-prometheus:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8006:5665
+
+  engs-tcc-grafana:
+    image: grafana/grafana-oss:12.0.0
+    container_name: engs-tcc-grafana
+    restart: unless-stopped
+    mem_limit: '1gb'
+    memswap_limit: '1gb'
+    cpus: '1.0'
+    volumes:
+      - engs-tcc-grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      engs-tcc-prometheus:
+        condition: service_healthy
+    networks:
+      - engs-tcc-network
+    ports:
+      - 8005:3000
