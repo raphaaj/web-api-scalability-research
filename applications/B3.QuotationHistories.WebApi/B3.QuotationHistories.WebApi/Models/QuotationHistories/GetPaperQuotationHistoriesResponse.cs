@@ -1,14 +1,8 @@
 namespace B3.QuotationHistories.WebApi.Models.QuotationHistories;
 
-public class GetPaperQuotationHistoriesResponse(
-    int pageNumber,
-    int pageSize,
-    int totalNumberOfItems,
-    int totalNumberOfPages,
-    GetPaperQuotationHistoryResponse[] items)
-    : PaginatedResponse<GetPaperQuotationHistoryResponse>(pageNumber, pageSize, totalNumberOfItems, totalNumberOfPages,
-        items)
+public class GetPaperQuotationHistoriesResponse(GetPaperQuotationHistoryResponse[] quotationHistories)
 {
+    public GetPaperQuotationHistoryResponse[] QuotationHistories { get; set; } = quotationHistories;
 }
 
 public class GetPaperQuotationHistoryResponse

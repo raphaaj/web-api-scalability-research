@@ -1,4 +1,5 @@
 using B3.QuotationHistories.Application.UseCases.GetPaperQuotationHistoriesUseCase;
+using B3.QuotationHistories.Domain.Exceptions;
 using B3.QuotationHistories.WebApi.Mappers;
 using B3.QuotationHistories.WebApi.Models.QuotationHistories;
 using Microsoft.AspNetCore.Mvc;
@@ -12,28 +13,31 @@ public class QuotationHistoriesController(GetPaperQuotationHistoriesUseCase getP
 {
     [HttpGet]
     public async Task<IActionResult> GetPaperQuotationHistoriesAsync(
-        [FromQuery] GetPaperQuotationHistoriesRequest request)
+        [FromQuery] string paperNegotiationCode)
     {
         var getPaperHistoricalQuotationsCommandRequest = new GetPaperQuotationHistoriesUseCaseCommandRequest
         {
-            PaperNegotiationCode = request.PaperNegotiationCode,
-            PageNumber = request.PageNumber,
-            PageSize = request.PageSize,
+            PaperNegotiationCode = paperNegotiationCode,
         };
 
-        var getPaperHistoricalQuotationsCommandResult =
-            await getPaperQuotationHistoriesUseCase.ExecuteAsync(getPaperHistoricalQuotationsCommandRequest);
+        GetPaperQuotationHistoriesUseCaseCommandResult getPaperHistoricalQuotationsCommandResult;
+        try
+        {
+            getPaperHistoricalQuotationsCommandResult =
+                await getPaperQuotationHistoriesUseCase.ExecuteAsync(getPaperHistoricalQuotationsCommandRequest);
+        }
+        catch (InvalidPaperNegotiationCodeException invalidPaperNegotiationCodeException)
+        {
+            ModelState.AddModelError(nameof(paperNegotiationCode),
+                invalidPaperNegotiationCodeException.Message);
+            return ValidationProblem(ModelState);
+        }
 
-        var getPaperHistoricalQuotationsItemsResponse = getPaperHistoricalQuotationsCommandResult.Items
+        var quotationHistories = getPaperHistoricalQuotationsCommandResult.QuotationHistories
             .Select(PaperQuotationHistoryDtoMapper.ToGetPaperHistoricalQuotationResponse)
             .ToArray();
 
-        var getPaperHistoricalQuotationsResponse = new GetPaperQuotationHistoriesResponse(
-            getPaperHistoricalQuotationsCommandResult.PageNumber,
-            getPaperHistoricalQuotationsCommandResult.PageSize,
-            getPaperHistoricalQuotationsCommandResult.TotalNumberOfItems,
-            getPaperHistoricalQuotationsCommandResult.TotalNumberOfPages,
-            getPaperHistoricalQuotationsItemsResponse);
+        var getPaperHistoricalQuotationsResponse = new GetPaperQuotationHistoriesResponse(quotationHistories);
 
         return Ok(getPaperHistoricalQuotationsResponse);
     }

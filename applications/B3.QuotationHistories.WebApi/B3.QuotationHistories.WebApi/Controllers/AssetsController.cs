@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using B3.QuotationHistories.Application.Exceptions;
 using B3.QuotationHistories.Application.UseCases.GetTopNAssetsWithHighestNegotiatedVolumeUseCase;
+using B3.QuotationHistories.WebApi.Mappers;
 using B3.QuotationHistories.WebApi.Models.Assets;
 using Microsoft.AspNetCore.Mvc;
 
@@ -24,18 +26,28 @@ public class AssetsController(
                 NumberOfTopAssetsWithHighestNegotiatedVolume = n
             };
 
-        var getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResult =
-            await getTopNAssetsWithHighestNegotiatedVolumeUseCase.ExecuteAsync(
-                getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandRequest);
+        GetTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResult
+            getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResult;
+        try
+        {
+            getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResult =
+                await getTopNAssetsWithHighestNegotiatedVolumeUseCase.ExecuteAsync(
+                    getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandRequest);
+        }
+        catch (InvalidNumberOfTopAssetsWithHighestNegotiatedVolumeException
+               invalidNumberOfTopAssetsWithHighestNegotiatedVolumeException)
+        {
+            ModelState.AddModelError(nameof(n), invalidNumberOfTopAssetsWithHighestNegotiatedVolumeException.Message);
+            return ValidationProblem(ModelState);
+        }
+
+        var assets = getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResult
+            .Assets
+            .Select(TopAssetWithHighestNegotiatedVolumeDtoMapper.ToTopAssetWithHighestNegotiatedVolumeResponse)
+            .ToArray();
 
         var getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResponse =
-            new GetTopNAssetsWithHighestNegotiatedVolumeResponse(
-                getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResult.Assets
-                    .Select(x =>
-                        new TopAssetWithHighestNegotiatedVolumeResponse(x.PaperNegotiationCode,
-                            x.TotalVolumeOfTilesNegotiated)
-                    )
-                    .ToArray());
+            new GetTopNAssetsWithHighestNegotiatedVolumeResponse(assets);
 
         return Ok(getTopNAssetsWithHighestNegotiatedVolumeUseCaseCommandResponse);
     }
