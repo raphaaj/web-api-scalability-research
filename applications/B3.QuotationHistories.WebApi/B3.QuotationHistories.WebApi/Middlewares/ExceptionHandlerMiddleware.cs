@@ -12,7 +12,7 @@ public class ExceptionHandlerMiddleware(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "An unhandled exception occurred.");
+            logger.LogError(ex, "Erro inesperado ao processar a requisição");
             await HandleExceptionAsync(context);
         }
     }
