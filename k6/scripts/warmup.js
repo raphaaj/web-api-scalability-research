@@ -22,7 +22,7 @@ export const options = {
   duration: '1m',
 };
 
-const BASE_API_URL = 'http://engs-tcc-webapi:8080';
+const BASE_API_URL = 'http://webapi:8080';
 
 function buildTopAssetsUrl(n) {
   return `${BASE_API_URL}/api/assets?n=${n}`;

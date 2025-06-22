@@ -61,7 +61,7 @@ export const options = {
   },
 };
 
-const BASE_API_URL = 'http://engs-tcc-webapi:8080';
+const BASE_API_URL = 'http://webapi:8080';
 const NUMBER_OF_TOP_ASSETS = 50;
 const DEFAULT_REQUESTS_TIMEOUT = '10s';
 
