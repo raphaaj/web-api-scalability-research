@@ -50,6 +50,18 @@ CREATE USER app_b3_quotation_histories_webapi WITH PASSWORD '****';
 GRANT SELECT ON quotation_histories TO app_b3_quotation_histories_webapi;
 GRANT SELECT ON assets_aggregation TO app_b3_quotation_histories_webapi;
 
+CREATE USER app_b3_quotation_histories_webapi_hs_1 WITH PASSWORD '****';
+GRANT SELECT ON quotation_histories TO app_b3_quotation_histories_webapi_hs_1;
+GRANT SELECT ON assets_aggregation TO app_b3_quotation_histories_webapi_hs_1;
+
+CREATE USER app_b3_quotation_histories_webapi_hs_2 WITH PASSWORD '****';
+GRANT SELECT ON quotation_histories TO app_b3_quotation_histories_webapi_hs_2;
+GRANT SELECT ON assets_aggregation TO app_b3_quotation_histories_webapi_hs_2;
+
+CREATE USER app_b3_quotation_histories_webapi_hs_3 WITH PASSWORD '****';
+GRANT SELECT ON quotation_histories TO app_b3_quotation_histories_webapi_hs_3;
+GRANT SELECT ON assets_aggregation TO app_b3_quotation_histories_webapi_hs_3;
+
 CREATE USER app_prometheus_postgres_exporter WITH PASSWORD '****';
 GRANT CONNECT ON DATABASE postgres TO app_prometheus_postgres_exporter;
 GRANT pg_monitor to app_prometheus_postgres_exporter;

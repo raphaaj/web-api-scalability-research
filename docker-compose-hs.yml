@@ -1,0 +1,247 @@
+networks:
+  network-hs:
+
+volumes:
+  web-api-scalability-research_postgres-data:
+    external: true
+  web-api-scalability-research_prometheus-data:
+    external: true
+  web-api-scalability-research_grafana-data:
+    external: true
+
+x-webapi-template: &webapi-template
+  build:
+    context: ./applications/B3.QuotationHistories.WebApi/
+    dockerfile: ./B3.QuotationHistories.WebApi/Dockerfile
+  image: web-api-scalability-research_webapi
+  restart: unless-stopped
+  mem_limit: '0.25gb'
+  memswap_limit: '0.25gb'
+  cpus: '0.2'
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+    interval: 5s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - network-hs
+
+services:
+
+  postgres:
+    image: postgres:17.4
+    restart: unless-stopped
+    shm_size: '1gb'
+    mem_limit: '2gb'
+    memswap_limit: '2gb'
+    cpus: '2.0'
+    env_file:
+      - ./envs/postgres.env
+    volumes:
+      - ./database/postgresql.conf:/etc/postgresql/postgresql.conf
+      - web-api-scalability-research_postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "admin", "-d", "b3_quotation_histories_2024"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - network-hs
+    ports:
+      - 8000:5432
+  
+  webapi_1:
+    <<: *webapi-template
+    env_file:
+      - ./envs/webapi-hs-1.env
+    ports:
+      - 8101:8080
+  
+  webapi_2:
+    <<: *webapi-template
+    env_file:
+      - ./envs/webapi-hs-2.env
+    ports:
+      - 8102:8080
+  
+  webapi_3:
+    <<: *webapi-template
+    env_file:
+      - ./envs/webapi-hs-3.env
+    ports:
+      - 8103:8080
+
+  webapi:
+    image: nginx:1.27.5-alpine
+    restart: unless-stopped
+    mem_limit: '0.5gb'
+    memswap_limit: '0.5gb'
+    cpus: '1.0'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      webapi_1:
+        condition: service_healthy
+      webapi_2:
+        condition: service_healthy
+      webapi_3:
+        condition: service_healthy
+    networks:
+      - network-hs
+    ports:
+      - 8001:8080
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
+    restart: unless-stopped
+    mem_limit: '0.25gb'
+    memswap_limit: '0.25gb'
+    cpus: '0.5'
+    command:
+      - '-housekeeping_interval=1s'
+      - '-docker_only=true'
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      webapi:
+        condition: service_healthy
+    networks:
+      - network-hs
+    ports:
+      - 8002:8080
+
+  postgres-prometheus-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    mem_limit: '0.1gb'
+    memswap_limit: '0.1gb'
+    cpus: '0.25'
+    env_file:
+      - ./envs/postgres-prometheus-exporter.env
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9187"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - network-hs
+    ports:
+      - 8003:9187
+
+  nginx-prometheus-exporter:
+    image: nginx/nginx-prometheus-exporter:1.4
+    restart: unless-stopped
+    mem_limit: '0.1gb'
+    memswap_limit: '0.1gb'
+    cpus: '0.25'
+    command:
+      - '--nginx.scrape-uri=http://webapi:8080/stub_status'
+    depends_on:
+      webapi:
+        condition: service_healthy
+    networks:
+      - network-hs
+    ports:
+      - 8007:9113
+
+  prometheus:
+    image: prom/prometheus:v3.3.1
+    restart: unless-stopped
+    mem_limit: '1gb'
+    memswap_limit: '1gb'
+    cpus: '1.0'
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+      - '--enable-feature=native-histograms'
+      - '--storage.tsdb.retention.time=2y'
+    volumes:
+      - ./prometheus/prometheus-hs.yml:/etc/prometheus/prometheus.yml:ro
+      - web-api-scalability-research_prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      postgres-prometheus-exporter:
+        condition: service_healthy
+      cadvisor:
+        condition: service_healthy
+      nginx-prometheus-exporter:
+        condition: service_started
+    networks:
+      - network-hs
+    ports:
+      - 8004:9090
+  
+  k6:
+    image: grafana/k6:1.0.0
+    restart: unless-stopped
+    mem_limit: '4gb'
+    memswap_limit: '4gb'
+    cpus: '2.0'
+    entrypoint: [ "tail", "-f", "/dev/null" ]
+    env_file:
+      - ./envs/k6.env
+    volumes:
+      - ./k6/scripts:/scripts
+      - ./k6/reports:/reports
+      - ./k6/outputs:/outputs
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - network-hs
+    ports:
+      - 8006:5665
+
+  grafana:
+    image: grafana/grafana-oss:12.0.0
+    restart: unless-stopped
+    mem_limit: '1gb'
+    memswap_limit: '1gb'
+    cpus: '1.0'
+    volumes:
+      - web-api-scalability-research_grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - network-hs
+    ports:
+      - 8005:3000
