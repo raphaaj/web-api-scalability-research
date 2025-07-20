@@ -18,7 +18,7 @@ export const options = {
   throw: true,
 
   // https://grafana.com/docs/k6/latest/testing-guides/test-types/smoke-testing/
-  vus: 80,
+  vus: 100,
   duration: '1m',
 };
 
