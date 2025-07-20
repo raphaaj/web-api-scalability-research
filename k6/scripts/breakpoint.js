@@ -41,21 +41,18 @@ export const options = {
       {
         threshold: 'p(99)<2000',
         abortOnFail: true,
-        delayAbortEval: '30s',
       },
     ],
     'http_req_duration{name:top-asset-quotation-histories}': [
       {
         threshold: 'p(99)<2000',
         abortOnFail: true,
-        delayAbortEval: '30s',
       },
     ],
     'http_req_duration{name:random-quotation-histories}': [
       {
         threshold: 'p(99)<2000',
         abortOnFail: true,
-        delayAbortEval: '30s',
       },
     ],
   },
